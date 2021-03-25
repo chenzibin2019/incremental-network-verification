@@ -15,19 +15,20 @@ class iBGP(object):
                 for dnode in node.asm_node[asm_node].dnode:
                     # calculate ranking 
                     params = node.asm_node[asm_node].dnode[dnode]['params']
+                    link = list(sorted([node.nodeid, node.asm_node[asm_node].dnode[dnode]['node'].node.nodeid]))
                     #ranking = params['egp_cost'] * self.topo.max_cost + (self.max_cost - params['w'])
                     # constraints -> larger than ranking
                     self.solver.add(
-                        Int('r_ranking_%s' % asm_node) >= Int('r_egp_cost_%s' % dnode) * self.topo.max_cost + (self.topo.max_cost - params['w'])
+                        Int('r_ranking_%s' % asm_node) >= Int('r_egp_cost_%s' % dnode) * self.topo.max_cost + (self.topo.max_cost - Int('w_%d_%d'%(link[0], link[1])))
                     )
+                    self.solver.addParameter(Int('w_%d_%d'%(link[0], link[1])), params['w'])
                     # add dependencies 
-                    link = list(sorted([node.nodeid, node.asm_node[asm_node].dnode[dnode]['node'].node.nodeid]))
                     #self.solver.addDependency('r_%s' % asm_node, 'r_%s' % dnode)
                     #self.solver.addDependency('r_%s' % asm_node, 'w_%d_%d'%(link[0], link[1]))
                     # add or constraints
                     constraints_or.append(self.solver.And([
                         Int('r_egp_cost_%s' % asm_node) == Int('r_egp_cost_%s' % dnode),
-                        Int('r_ranking_%s' % asm_node) == Int('r_egp_cost_%s' % dnode) * self.topo.max_cost + (self.topo.max_cost - params['w']),
+                        Int('r_ranking_%s' % asm_node) == Int('r_egp_cost_%s' % dnode) * self.topo.max_cost + (self.topo.max_cost - Int('w_%d_%d'%(link[0], link[1]))),
                         Int('r_origin_%s'% asm_node) == -1 * node.asm_node[asm_node].dnode[dnode]['node'].node.nodeid
                     ]))
                     #print(asm_node, node.asm_node[asm_node].type)
@@ -36,11 +37,12 @@ class iBGP(object):
                     # additional constraints following eBGP announcements: 
                     rank_e = node.asm_node[asm_node].params['egp_cost'] * self.topo.max_cost
                     self.solver.add(self.solver.And([
-                        Int('r_ranking_%s'%asm_node) >= rank_e,
+                        Int('r_ranking_%s'%asm_node) >= Int('e_rank_%d'%node.asm_node[asm_node].node.nodeid),
                     ]))
                     #self.solver.addDependency('r_%s' % asm_node, 'e')
+                    self.solver.addParameter(Int('e_rank_%d'%node.asm_node[asm_node].node.nodeid), rank_e)
                     constraints_or.append(self.solver.And([
-                        Int('r_ranking_%s'%asm_node) == rank_e,
+                        Int('r_ranking_%s'%asm_node) == Int('e_rank_%d'%node.asm_node[asm_node].node.nodeid),
                         Int('r_egp_cost_%s'%asm_node) == node.asm_node[asm_node].params['egp_cost'],
                         Int('r_origin_%s'% asm_node) == 0
                     ]))
@@ -75,6 +77,11 @@ class iBGP(object):
         proc_unodes(change_node, change_node.unode, constraints_or)
 
         #phase3: add constraints or in
-        for o in constraints_or.values():
-            self.isolver.add(self.isolver.Or(o))
+        for o in constraints_or:
+            self.isolver.add(self.isolver.Or(constraints_or[o]))
+            #print(o, len(constraints_or[o]))
 
+    def iZ3Build(self, change_node, egp_cost):
+        self.solver.solver.pop()
+        self.solver.rebuiltParamConstraints('e_rank_%d'%change_node.node.nodeid, egp_cost * self.topo.max_cost)
+        return self
