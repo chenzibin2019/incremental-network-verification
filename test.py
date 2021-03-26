@@ -31,6 +31,11 @@ def bgp(args):
 
     print(t2-t1, t4-t3, t6-t5)
 
+    with open('0325.csv', 'a') as f:
+        f.write('{},{},{},{}\n'.format(
+            len(v.topo.node_list), t2-t1, t4-t3, t6-t5
+        ))
+
     
     
 

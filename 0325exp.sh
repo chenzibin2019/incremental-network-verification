@@ -6,5 +6,5 @@ do
   echo === Generator start ===
   python generator_fm.py ${i}
   echo === Verifier start ===
-  python test.py -t fm/topo/fm_${i}.txt -a fm/bgp/announcement_${i}.json -p fm/bgp/pref_${i}.json
+  python test.py -t dataset/fm/topo/fm_${i}.txt -a dataset/fm/bgp/announcement_${i}.json -p dataset/bgp/pref_${i}.json
 done

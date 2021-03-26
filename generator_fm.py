@@ -18,7 +18,7 @@ def topo_to_file(topo):
     for node in topo.values():
         for n in node.neighbors:
             buff += '%d|%d|%d\n' % (node.nodeid, n, node.neighbors[n])
-    with open('fm/topo/fm_%d.txt'%size, 'w') as f:
+    with open('dataset/fm/topo/fm_%d.txt'%size, 'w') as f:
         f.write(buff)
         f.close()
     # write some announcements.. 
@@ -34,8 +34,8 @@ def topo_to_file(topo):
             "med": random.randint(1, 10)
         }
 
-    fpref = open('fm/bgp/pref_%d.json'%size, 'w')
-    fannouncements = open('fm/bgp/announcement_%d.json'%size, 'w')
+    fpref = open('dataset/fm/bgp/pref_%d.json'%size, 'w')
+    fannouncements = open('dataset/fm/bgp/announcement_%d.json'%size, 'w')
     json.dump(bgp_pref, fpref)
     json.dump(bgp_announcements, fannouncements)
     fpref.close()
