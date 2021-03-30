@@ -3,6 +3,7 @@ from topo.node import Node
 class Topo(object):
     def __init__(self):
         self.node_list = {}
+        self.link_list = []
 
     def add_node(self, node):
         if isinstance(node, int): 

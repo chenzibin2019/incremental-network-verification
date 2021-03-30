@@ -23,19 +23,9 @@ def bgp(args):
     print('=== Static Analysis ===')
     t7 = time.time()
     print(v.ssolver.check())
+    #print(v.ssolver.model())
     t8 = time.time()
     #print(change_node.name)
-    v.incrementalModel(model, change_node, 5000)
-    print('=== Incremental Solving ===')
-    t3 = time.time()
-    print(v.isolver.check())
-    #print(v.isolver.solver)
-    t4 = time.time()
-    #print(v.isolver.model())
-    with open('solution_log_inc.txt', 'w') as f:
-        for sol in v.isolver.solver.model().decls():
-            f.write(sol.__str__()+'=='+ v.isolver.solver.model()[sol].__str__()+'\n')
-        f.close()
     print('=== Using incremental Z3 ===')
     v.iZ3Build(change_node, 5000)
     t5 = time.time()
@@ -50,11 +40,11 @@ def bgp(args):
     #print(v.topo.max_egp_cost, v.topo.node_list[3].asm_node['ebest3'].params)
     
 
-    print(t2-t1, t4-t3, t6-t5, t8-t7, (t6-t5)/(t4-t3))
+    print(t2-t1, t6-t5, t8-t7)
 
     with open('0325.csv', 'a') as f:
-        f.write('{},{},{},{},{}\n'.format(
-            len(v.topo.node_list), t2-t1, t4-t3, t6-t5, (t6-t5)/(t4-t3)
+        f.write('{},{},{}\n'.format(
+            len(v.topo.node_list), t2-t1, t6-t5
         ))
     
     

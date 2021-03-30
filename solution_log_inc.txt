@@ -1,0 +1,12 @@
+r_origin_best2==-3
+r_egp_cost_best3==5000
+r_ranking_best2==30005
+r_ranking_best1==30001
+r_ranking_best3==30006
+r_ranking_ebest3==30006
+r_egp_cost_ebest3==5000
+r_egp_cost_best2==5000
+r_egp_cost_best1==5000
+r_origin_best3==-3
+r_origin_best1==-3
+r_origin_ebest3==999999999

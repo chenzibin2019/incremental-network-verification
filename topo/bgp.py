@@ -9,6 +9,7 @@ class BGP(Topo):
         self.max_length = -1
         self.max_cost = -1
         self.connections = []
+        self.max_egp_cost = 0
 
     def build_from_abstraction(self, args):
         self.load_from_file(args.topo)
@@ -35,7 +36,7 @@ class BGP(Topo):
             announcement = json.load(f)
             tmp_announcement = {}
             field_max = {'med': 100}
-            max_length = 0
+            max_length = 10
             for node in announcement: 
                 nodeid = int(node)
                 tmp_announcement[nodeid] = {'length': 10, 'med': 100}
@@ -56,6 +57,8 @@ class BGP(Topo):
                     (max_length - tmp_announcement[nodeid]['length']) * field_max['med'] + 
                     (field_max['med'] - tmp_announcement[nodeid]['med'])
                 )
+                if self.node_list[nodeid].params['egp_cost'] > self.max_egp_cost: 
+                    self.max_egp_cost = self.node_list[nodeid].params['egp_cost']
             # record max_length
             self.max_length = max_length
 
@@ -77,18 +80,30 @@ class BGP(Topo):
                 node.buildASMNode('ebest%d'%node.nodeid, 'ebest')
                 node.asm_node['best%d'%node.nodeid].connect(node.asm_node['ebest%d'%node.nodeid], 'down', {'w': 0})
                 node.asm_node['ebest%d'%node.nodeid].connect(node.asm_node['best%d'%node.nodeid], 'up', {'w': 0})
-                node.asm_node['ebest%d'%node.nodeid].params['egp_cost'] = node.params['pref'] * self.max_length + node.params['egp_cost']
+                node.asm_node['ebest%d'%node.nodeid].params['egp_cost'] = node.params['pref'] * self.max_egp_cost + node.params['egp_cost']
             else:
                 node.params['has_ebest'] = False
         #print([(n.nodeid, n.asm_node) for n in self.node_list.values() if n.params['has_ebest']])
         for n1, n2 in self.connections:
-            if self.node_list[n1].params['has_ebest']: self.node_list[n2].asm_node['best%d'%n2].connect(
-                self.node_list[n1].asm_node['ebest%d'%n1], 'down', {
-                    'w': self.node_list[n2].neighbors[n1]['params']['w']
-                }
-            )
-            if self.node_list[n2].params['has_ebest']: self.node_list[n1].asm_node['best%d'%n1].connect(
-                self.node_list[n2].asm_node['ebest%d'%n2], 'down', {
-                    'w': self.node_list[n1].neighbors[n2]['params']['w']
-                }
-            )
+            if self.node_list[n1].params['has_ebest']: 
+                self.node_list[n2].asm_node['best%d'%n2].connect(
+                    self.node_list[n1].asm_node['ebest%d'%n1], 'down', {
+                        'w': self.node_list[n2].neighbors[n1]['params']['w']
+                    }
+                )
+                self.node_list[n1].asm_node['ebest%d'%n1].connect(
+                    self.node_list[n2].asm_node['best%d'%n2], 'up', {
+                        'w': self.node_list[n2].neighbors[n1]['params']['w']
+                    }
+                )
+            if self.node_list[n2].params['has_ebest']: 
+                self.node_list[n1].asm_node['best%d'%n1].connect(
+                    self.node_list[n2].asm_node['ebest%d'%n2], 'down', {
+                        'w': self.node_list[n1].neighbors[n2]['params']['w']
+                    }
+                )
+                self.node_list[n2].asm_node['ebest%d'%n2].connect(
+                    self.node_list[n1].asm_node['best%d'%n1], 'up', {
+                        'w': self.node_list[n1].neighbors[n2]['params']['w']
+                    }
+                )
