@@ -8,11 +8,16 @@ class OSPF(Verifier):
         super(OSPF, self).__init__(topo, args, loader)
         self.isolver = iSMTSolver()
 
-    def buildParams(self):
+    def buildParams(self, force_key=None, force_value=None):
+        print(force_key)
         for n in self.topo.node_list.values(): 
             self.solver.addParameter(Int('r_%d_prev'%n.nodeid), 999999999999)
             for nb in n.neighbors:
-                if n.nodeid <= nb: self.solver.addParameter(Int('w_%d_%d'%(n.nodeid, nb)), n.neighbors[nb]['params']['w'])
+                if n.nodeid <= nb: 
+                    if force_key is not None and nb in force_key and n.nodeid in force_key: 
+                        self.solver.addParameter(Int('w_%d_%d'%(n.nodeid, nb)), force_value)
+                    else: 
+                        self.solver.addParameter(Int('w_%d_%d'%(n.nodeid, nb)), n.neighbors[nb]['params']['w'])
         return self
 
     def buildSMTConstraint(self):
@@ -78,7 +83,7 @@ class OSPF(Verifier):
         model = self.isolver.model()
         return self.incrementalSolving(prev_model, changed_link, new_cost, changed_link, model)
 
-    def incrementalSolving(self, prev_model, changed_link, new_cost, in_model, last_model, t=0):
+    def incrementalSolving(self, prev_model, changed_link, new_cost, in_model, last_model, t=0, i=1):
         self.isolver.reset()
         constraint_or = {}
         next_in_model = [n for n in in_model]
@@ -119,11 +124,12 @@ class OSPF(Verifier):
 
         need_continue = False
         for n in next_in_model: 
-            if model[Int('r_%d'%n)].as_long() != model[Int('r_%d_prev'%n)].as_long(): need_continue = True
-
+            if model[Int('r_%d'%n)].as_long() != model[Int('r_%d_prev'%n)].as_long(): 
+                need_continue = True
         t += (t2 -t1)
-        if not need_continue: return t, model, None
-        return self.incrementalSolving(prev_model, changed_link, new_cost, next_in_model, model, t)
+        if not need_continue: 
+            return t, model, i
+        return self.incrementalSolving(prev_model, changed_link, new_cost, next_in_model, model, t, i+1)
 
     def SMTSolving(self, model):
         t = 0.0
@@ -147,7 +153,7 @@ class OSPF(Verifier):
             for n in self.topo.node_list:
                 if not model[Int('r_%d_prev'%n)].as_long() == model[Int('r_%d'%n)].as_long(): need_continue = True
             if not need_continue: break
-
+        print('')
         return t, model, itr
         
     def iZ3Build(self, model, changed_link, new_cost):
@@ -155,3 +161,41 @@ class OSPF(Verifier):
         self.solver.rebuiltParamConstraints('w_%d_%d'%(changed_link[0], changed_link[1]), new_cost)
         assert self.solver.check() == sat
         return self.SMTSolving(self.solver.model())
+
+    def iZ3Solving(self, model):
+        t = 0.0
+        itr = 0
+        while True:
+            #self.solver.clear()
+            for d in model: 
+                name = d.__str__()
+                if name.startswith('r_') and not name.endswith('_prev'): 
+                    self.solver.params[Int('%s_prev' % d)] = model[d]
+            self.solver.rebuiltParamConstraints()
+            #self.solver.add(self.solver.And(self.solver.constraint_prep))
+            self.solver.solver.pop()
+            t1 = time.time()
+            assert self.solver.check() == sat
+            t2 = time.time()
+            itr += 1
+            print(itr, end='\r')
+            t += (t2 - t1)
+            need_continue = False
+            model = self.solver.model()
+            for n in self.topo.node_list:
+                if not model[Int('r_%d_prev'%n)].as_long() == model[Int('r_%d'%n)].as_long(): need_continue = True
+            if not need_continue: break
+        print('')
+        return t, model, itr
+    
+    def verify(self, asm, iasm, iz3):
+        for n in self.topo.node_list:
+            iasm_sol = iasm[Int('r_%d'%n)].as_long() if iasm[Int('r_%d'%n)] is not None else asm[Int('r_%d'%n)].as_long()
+            iz3_sol = iz3[Int('r_%d'%n)].as_long()
+            assert iasm_sol == iz3_sol
+
+    def verify_static(self, model, imodel):
+        for n in self.topo.node_list:
+            iz3_sol = imodel[Int('r_%d'%n)].as_long()
+            assert model[Int('r_%d'%n)].as_long() == iz3_sol
+        print('passed modeled solution checking')
