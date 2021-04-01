@@ -6,7 +6,7 @@ class ASMNode(object):
         self.dnode = {}     # u/d-node-> name: {'node': node, 'params': {key: val}}
         self.unode = {}
         self.params = {}
-        self.status = 'deactivate'  # to prone nodes, valid options: 'deactivate', 'pendings', 'activate'
+        self.status = 'deactivate'  # to prone nodes, valid options: 'deactivate', 'pending', 'activate'
         self.type = atype
 
     def connect(self, asm_node, direction='up', params={}):

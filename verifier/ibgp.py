@@ -12,9 +12,11 @@ class iBGP(object):
     def buildSMTConstraint(self):
         for node in self.topo.node_list.values():
             for asm_node in node.asm_node:
+                if node.asm_node[asm_node].status != 'activate': continue
                 constraints_or = []
                 for dnode in node.asm_node[asm_node].dnode:
                     # calculate ranking 
+                    if node.asm_node[asm_node].dnode[dnode]['node'].status != 'activate': continue
                     params = node.asm_node[asm_node].dnode[dnode]['params']
                     link = list(sorted([node.nodeid, node.asm_node[asm_node].dnode[dnode]['node'].node.nodeid]))
                     #ranking = params['egp_cost'] * self.topo.max_cost + (self.max_cost - params['w'])
@@ -49,11 +51,12 @@ class iBGP(object):
                         Int('r_origin_%s'% asm_node) == 0
                     ]))
                 #print(asm_node, node.asm_node[asm_node].dnode, constraints_or)
-                self.solver.add(self.solver.Or(constraints_or))
+                if constraints_or != []: self.solver.add(self.solver.Or(constraints_or))
 
     def incrementalModel(self, model, change_node, egp_cost):
         def proc_unodes(current_node, unodes, constraints_or):
             for u in unodes.values(): 
+                if u['node'].status != 'activate': continue
                 constraints_or[u['node'].name].append(self.isolver.And([
                     Int('r_ranking_%s'%(u['node'].name)) == Int('r_egp_cost_%s' % current_node.name) * self.topo.max_cost + (self.topo.max_cost - u['params']['w']),
                     Int('r_egp_cost_%s'%u['node'].name) == Int('r_egp_cost_%s' % current_node.name),
@@ -67,6 +70,7 @@ class iBGP(object):
         constraints_or = {}
         for node in self.topo.node_list.values(): 
             for a in node.asm_node.values(): 
+                if a.status != 'activate': continue
                 constraints_or[a.name] = [self.isolver.And([
                     Int('r_ranking_%s'%a.name) == model[Int('r_ranking_%s'%a.name)],
                     Int('r_egp_cost_%s'%a.name) == model[Int('r_egp_cost_%s'%a.name)],
@@ -143,9 +147,13 @@ class iBGP(object):
 
     def verify(self):
         def verify_value(key):
-            return self.solver.model()[key] == self.ssolver.model()[key]
+            return self.solver.model()[key] == self.isolver.model()[key]
         for n in self.topo.node_list.values():
             for asm_node in n.asm_node.values():
-                assert verify_value(Int('r_egp_cost_%s'%asm_node.name))
-                assert verify_value(Int('r_ranking_%s'%asm_node.name))
+                if asm_node.status != 'activate': continue
+                try:
+                    assert verify_value(Int('r_egp_cost_%s'%asm_node.name))
+                    assert verify_value(Int('r_ranking_%s'%asm_node.name))
+                except: 
+                    print('verify failed at node ', asm_node.name)
                 
