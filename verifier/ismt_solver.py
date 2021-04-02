@@ -1,4 +1,4 @@
-from z3 import Solver, And, Or, If, Int
+from z3 import Solver, And, Or, If, Int, Bool
 
 class iSMTSolver(object):
     def __init__(self, verbose=False):
@@ -7,6 +7,7 @@ class iSMTSolver(object):
         self.param_constraints = []
         self.params = {}
         self.constraint_prep = []
+        self.constraint_lib = {}
         self.verbose = verbose
 
     def add(self, constraint):
@@ -24,6 +25,17 @@ class iSMTSolver(object):
             self.param_constraints.append(p == v)
         elif verbose: 
             print('dup', p)
+
+    def setConstraintLib(self, id, constraint):
+        if id not in self.constraint_lib: self.constraint_lib[id] = [constraint]
+        else: self.constraint_lib[id].append(constraint)
+
+    def addConstraintLib(self, id, me=And):
+        assert id in self.constraint_lib
+        self.add(me(self.constraint_lib[id]))
+
+    def getConstraintLib(self, id, me=And):
+        return me(self.constraint_lib[id]) if id in self.constraint_lib else None
 
     def rebuiltParamConstraints(self, k=None, v=None):
         self.param_constraints = []

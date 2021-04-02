@@ -144,3 +144,4 @@ plot
 
 env/
 data/
+*.csv

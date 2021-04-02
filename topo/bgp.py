@@ -3,8 +3,8 @@ from topo.topo import Topo
 from topo.node import Node
 
 class BGP(Topo):
-    def __init__(self):
-        super(BGP, self).__init__()
+    def __init__(self, args=None):
+        super(BGP, self).__init__(args)
         self.announcements = {}
         self.max_length = -1
         self.max_cost = -1

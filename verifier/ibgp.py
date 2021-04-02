@@ -1,4 +1,4 @@
-from verifier.ismt_solver import iSMTSolver, Int
+from verifier.ismt_solver import iSMTSolver, Int, Bool
 
 class iBGP(object):
     def __init__(self, topo, args, loader=None):
@@ -6,6 +6,7 @@ class iBGP(object):
         self.solver = iSMTSolver()
         self.isolver = iSMTSolver()
         self.ssolver = iSMTSolver()
+        self.args = args
         if loader is not None:
             getattr(topo, loader)(args)
 
@@ -21,13 +22,25 @@ class iBGP(object):
                     link = list(sorted([node.nodeid, node.asm_node[asm_node].dnode[dnode]['node'].node.nodeid]))
                     #ranking = params['egp_cost'] * self.topo.max_cost + (self.max_cost - params['w'])
                     # constraints -> larger than ranking
-                    self.solver.add(
-                        Int('r_ranking_%s' % asm_node) >= Int('r_egp_cost_%s' % dnode) * self.topo.max_cost + (self.topo.max_cost - Int('w_%d_%d'%(link[0], link[1])))
+                    self.solver.setConstraintLib(
+                        asm_node, Int('r_ranking_%s' % asm_node) >= Int('r_egp_cost_%s' % dnode) * self.topo.max_cost + (self.topo.max_cost - Int('w_%d_%d'%(link[0], link[1])))
                     )
                     self.solver.addParameter(Int('w_%d_%d'%(link[0], link[1])), params['w'])
                     # add dependencies 
-                    self.solver.addDependency('r_%s' % asm_node, 'r_%s' % dnode)
-                    self.solver.addDependency('r_%s' % asm_node, 'w_%d_%d'%(link[0], link[1]))
+                    self.solver.addDependency('%s' % asm_node, '%s' % dnode)
+                    self.solver.addDependency('%s' % asm_node, 'w_%d_%d'%(link[0], link[1]))
+                    if self.args.change_type == 'bad':
+                        self.solver.add(self.solver.If(
+                            Int('r_ranking_%s' % asm_node) == Int('r_egp_cost_%s' % dnode) * self.topo.max_cost + (self.topo.max_cost - Int('w_%d_%d'%(link[0], link[1]))),
+                            self.solver.And([
+                                Bool('d_%s_%s'%(asm_node, dnode)) == True, 
+                                Bool('d_%s_w%d.%d'%(asm_node, link[0], link[1])) == True
+                            ]),
+                            self.solver.And([
+                                Bool('d_%s_%s'%(asm_node, dnode)) == False,
+                                Bool('d_%s_w%d.%d'%(asm_node, link[0], link[1])) == False
+                            ])
+                        ))
                     # add or constraints
                     constraints_or.append(self.solver.And([
                         Int('r_egp_cost_%s' % asm_node) == Int('r_egp_cost_%s' % dnode),
@@ -39,7 +52,7 @@ class iBGP(object):
                     # if the node is a ebest node with eBGP sessions:
                     # additional constraints following eBGP announcements: 
                     #rank_e = node.asm_node[asm_node].params['egp_cost'] * self.topo.max_cost + self.topo.max_cost
-                    self.solver.add(self.solver.And([
+                    self.solver.setConstraintLib(asm_node, self.solver.And([
                         Int('r_ranking_%s'%asm_node) >= Int('egp_cost_%s'%asm_node) * self.topo.max_cost + self.topo.max_cost,
                     ]))
                     #self.solver.addDependency('r_%s' % asm_node, 'e')
@@ -51,9 +64,10 @@ class iBGP(object):
                         Int('r_origin_%s'% asm_node) == 0
                     ]))
                 #print(asm_node, node.asm_node[asm_node].dnode, constraints_or)
-                if constraints_or != []: self.solver.add(self.solver.Or(constraints_or))
+                if constraints_or != []: self.solver.setConstraintLib(asm_node, self.solver.Or(constraints_or))
+                self.solver.addConstraintLib(asm_node)
 
-    def incrementalModel(self, model, change_node, egp_cost):
+    def incrementalModelGoodNews(self, model, change_node, egp_cost):
         def proc_unodes(current_node, unodes, constraints_or):
             for u in unodes.values(): 
                 if u['node'].status != 'activate': continue
@@ -90,6 +104,76 @@ class iBGP(object):
         for o in constraints_or:
             self.isolver.add(self.isolver.Or(constraints_or[o]))
             #print(o, constraints_or[o])
+
+    def incrementalModelBadNews(self, model, change_node, egp_cost):
+        def _need_recal(current_node, D, need_recal, traversed_node=[]):
+            if current_node in need_recal: 
+                for n in traversed_node: 
+                    if n in need_recal: break
+                    need_recal.append(n)
+                return True
+            if current_node not in D: return False
+            for n in D[current_node]:
+                if 'best' not in n: continue
+                if _need_recal(n, D, need_recal): 
+                    for n in traversed_node: 
+                        if n in need_recal: break
+                        need_recal.append(n)
+                    return True
+                return False
+            return False
+
+        need_recal = []
+        # phase 1: extract dependencies
+        D = {}
+        for d in model.decls(): 
+            if d.name().startswith('d_') and model[d]:
+                tokens = d.name().strip('d_').split('_')
+                assert len(tokens) == 2
+                if tokens[0] not in D: D[tokens[0]] = [tokens[1].replace('.', '_')]
+                else: D[tokens[0]].append(tokens[1].replace('.', '_'))
+                if tokens[1] == change_node.name: need_recal.append(tokens[0])
+        # phase 2, build constraints for variables; 
+        for node in self.topo.node_list.values():
+            for asm_node in node.asm_node:
+                if node.asm_node[asm_node].status != 'activate': continue
+                # if the node is changed node: recalculate 
+                if asm_node == change_node.name:
+                    self.isolver.add(self.solver.getConstraintLib(change_node.name))
+                # if asm is known to be re-calculated
+                elif asm_node in need_recal: 
+                    self.isolver.add(self.solver.getConstraintLib(asm_node))
+                # asm node not in D -> keep solution
+                elif asm_node not in D: 
+                    self.isolver.add(self.isolver.And([
+                        Int('r_ranking_%s'%asm_node) == model[Int('r_ranking_%s'%asm_node)].as_long(),
+                        Int('r_egp_cost_%s'%asm_node) == model[Int('r_egp_cost_%s'%asm_node)].as_long(),
+                        Int('r_origin_%s'%asm_node) == -999999
+                    ]))
+                # traverse D
+                elif _need_recal(asm_node, D, need_recal): 
+                    self.isolver.add(self.solver.getConstraintLib(asm_node))
+                else: 
+                    self.isolver.add(self.isolver.And([
+                        Int('r_ranking_%s'%asm_node) == model[Int('r_ranking_%s'%asm_node)].as_long(),
+                        Int('r_egp_cost_%s'%asm_node) == model[Int('r_egp_cost_%s'%asm_node)].as_long(),
+                        Int('r_origin_%s'%asm_node) == -999999
+                    ]))
+        # phase 3: rebuilt parameters
+        self.isolver.params = self.solver.params
+        self.isolver.rebuiltParamConstraints('egp_cost_%s'%change_node.name, egp_cost)
+
+    def incrementalModel(self, model, change_node, egp_cost):
+        #print(change_node)
+        if egp_cost == change_node.params['egp_cost']: 
+            return 
+        elif egp_cost > change_node.params['egp_cost']:
+            # good news
+            assert self.args.change_type == 'good'
+            return self.incrementalModelGoodNews(model, change_node, egp_cost)
+        else: 
+            assert self.args.change_type == 'bad'
+            return self.incrementalModelBadNews(model, change_node, egp_cost)
 
     def iZ3Build(self, change_node, egp_cost):
         self.solver.solver.pop()
@@ -147,7 +231,7 @@ class iBGP(object):
 
     def verify(self):
         def verify_value(key):
-            return self.solver.model()[key] == self.isolver.model()[key]
+            return self.solver.model()[key].as_long() == self.isolver.model()[key].as_long()
         for n in self.topo.node_list.values():
             for asm_node in n.asm_node.values():
                 if asm_node.status != 'activate': continue
@@ -155,5 +239,8 @@ class iBGP(object):
                     assert verify_value(Int('r_egp_cost_%s'%asm_node.name))
                     assert verify_value(Int('r_ranking_%s'%asm_node.name))
                 except: 
-                    print('verify failed at node ', asm_node.name)
+                    #pass
+                    print('verify failed at node ', asm_node.name, ':')
+                    print('-- egp_cost', self.solver.model()[Int('r_egp_cost_%s'%asm_node.name)].as_long(), self.isolver.model()[Int('r_egp_cost_%s'%asm_node.name)].as_long())
+                    print('-- ranking', self.solver.model()[Int('r_ranking_%s'%asm_node.name)].as_long(), self.isolver.model()[Int('r_ranking_%s'%asm_node.name)].as_long())
                 
