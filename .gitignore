@@ -145,4 +145,4 @@ plot
 env/
 data/
 *.csv
-writeup/
+writeup
