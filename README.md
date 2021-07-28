@@ -1,2 +1,2 @@
-# incremental-solving
-This is the main repo for iASM. 
+# Incremental Network Verification
+This is the repo for incremental network verification using SMT. 
