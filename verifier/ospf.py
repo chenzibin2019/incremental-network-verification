@@ -101,7 +101,7 @@ class OSPF(Verifier):
                 self.isolver.add(Int('r_%d'%nb) <= Int('r_%d_prev'%n) + w)
                 constraint_or[nb].append(self.isolver.And([
                     Int('r_%d'%nb) == Int('r_%d_prev'%n) + w,
-                    Int('r_next_hop_%d'%nb) == Int('r_next_hop_%d_prev'%n)
+                    Int('r_next_hop_%d'%nb) == n
                 ]))
                 
                 #if nb in in_model: 
